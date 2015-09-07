@@ -1,0 +1,119 @@
+#!/bin/bash
+
+USAGE='Usage:
+create-share-plist.sh [-h] -s <server> -f <shared folder> 
+                      [-p smb|afp] [-u <user name>]'
+
+# http://apple.stackexchange.com/questions/83077/how-do-i-create-a-network-automount-with-open-directory-in-10-8-server
+# http://rajeev.name/2007/11/22/autofs-goodness-in-apples-leopard-105-part-i/
+# https://support.apple.com/en-us/HT200121
+# https://discussions.apple.com/thread/5467533?start=15&tstart=0
+# /System/Library/CoreServices/Applications/Directory Utility.app
+# 
+# Alt:
+# http://useyourloaf.com/blog/2011/01/24/using-the-mac-os-x-automounter.html
+
+function brag_and_exit {
+	if [ -n "$1" ] ; then
+		ERR_MESSAGE="$1"
+	else
+		ERR_MESSAGE='Something went wrong'
+	fi
+
+	echo 'Error: '"${ERR_MESSAGE}"$'\n\n'"${USAGE}"
+
+	exit 1
+}
+
+# Deal with options
+
+while getopts ":s:f:p:u:h" opt ; do
+	case $opt in
+		h)
+			echo "$USAGE"
+			exit
+			;;
+		s)
+			SERVER="$OPTARG"
+			;;
+		f)
+			FOLDER="$OPTARG"
+			;;
+		p)
+			PROTO="$OPTARG"
+			;;
+		u)
+			USER_NAME="$OPTARG"
+			;;
+	esac
+done
+
+if [ -z "$SERVER" ] ; then
+	brag_and_exit 'Please specify a server'
+fi
+
+if [ -z "$FOLDER" ] ; then
+	brag_and_exit 'Please specify a shared folder'
+fi
+
+if [ -z "$PROTO" ] ; then
+	PROTO='smb'
+fi
+
+if echo "$PROTO" | grep -iq '^\(s\|smb\|smbfs\|samba\|cifs\|cifsfs\)$' ; then
+	PROTO='smb'
+elif echo "$PROTO" | grep -iq '^\(a\|afp\|afpfs\|apple\|apl\|applefs\)$' ; then
+	PROTO='afp'
+else
+	brag_and_exit "Unrecognized protocol $PROTO"
+fi
+
+if [ -z "$USER_NAME" ] || echo "$USER_NAME" | grep -iq '^guest$' ; then
+	USER_NAME='guest'
+fi
+
+
+# Elevate oneself
+
+if [ "$(id -u)" != 0 ]; then
+	SCRIPT="$(realpath $0)"
+	sudo "$SCRIPT" -s "$SERVER" -f "$FOLDER" -p "$PROTO" -u "$USER_NAME"
+	exit "$?"
+fi
+
+
+# Deal with password
+
+if [ "$USER_NAME" = 'guest' ] ; then
+	PASSWORD=''
+else
+	read -s -p "Password for user \"$USER_NAME\" on server \"$SERVER\": " PASSWORD
+	echo ''
+fi
+
+
+# Do the deed
+
+URL="${PROTO}://${USER_NAME}:${PASSWORD}@${SERVER}/${FOLDER}"
+
+RECOED_NAME="${SERVER}:/${FOLDER}"
+
+dscl localhost -create /Local/Default/Mounts temp
+dscl localhost -append /Local/Default/Mounts/temp VFSLinkDir /Network/Servers
+dscl localhost -append /Local/Default/Mounts/temp VFSType url
+dscl localhost -append /Local/Default/Mounts/temp VFSOpts net
+dscl localhost -merge /Local/Default/Mounts/temp VFSOpts "url==$URL"
+
+dscl localhost -read /Local/Default/Mounts/temp | sed -E 's/(url==[[:alpha:]]+:\/\/[^:]+:).*@/\1*****@/'
+
+dscl localhost -change /Local/Default/Mounts/temp RecordName temp "$RECOED_NAME"
+
+
+# Let the dust settle
+
+sleep 1
+
+
+# Apply changes
+
+automount -vc
