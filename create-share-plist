@@ -1,17 +1,49 @@
 #!/bin/bash
 
 USAGE='Usage:
-create-share-plist.sh [-h] -s <server> -f <shared folder> 
-                      [-p smb|afp] [-u <user name>]'
+create-share-plist [-h] -s <server> -f <shared folder> 
+                   [-p smb|afp] [-u <user name>]
+
+Instruct Mac OS X to automatically mount a network share once you 
+access its mountpoint. Shares get mounted at:
+  /Network/Servers/<server>/<share>
+
+Options:
+  -h Print this help and exit.
+  -s Server name or IP. Required.
+  -f Share name. Required
+  -p Either smb (aka cifs, Windows file sharing) or afp (Apple file 
+     protocol). If omited defaults to smb.
+  -u User name to authenticate on server with. If omited defaults to 
+     guest. If any other user then guest is specified the script asks 
+     for a password.
+
+Creates automount binary plist file for plain SMB (Windows file 
+sharing) and AFP (Apple file sharing). Warning: password is stored 
+in the plist, anyone with root privileges can read it.
+
+Includes workaround for the plist naming bug described by margate:
+  https://discussions.apple.com/thread/5467533?start=15&tstart=0
+
+Plists created with this script can be viewed (but not edited due to 
+a bug) in Directory Utility that can be found in:
+  /System/Library/CoreServices/Applications
+Navigating to automounted shares in Directory Utility:
+  1. Unlock 
+  2. Click "Directory Editor" icon
+  3. Select:
+     Viewing > Mounts
+     in node > /Local/Default
+
+To stop automounting a share sudo and delete a corresponding plist 
+from:
+  /var/db/dslocal/nodes/Default/mounts
+Then run:
+  automount -vc
+'
 
 # http://apple.stackexchange.com/questions/83077/how-do-i-create-a-network-automount-with-open-directory-in-10-8-server
 # http://rajeev.name/2007/11/22/autofs-goodness-in-apples-leopard-105-part-i/
-# https://support.apple.com/en-us/HT200121
-# https://discussions.apple.com/thread/5467533?start=15&tstart=0
-# /System/Library/CoreServices/Applications/Directory Utility.app
-# 
-# Alt:
-# http://useyourloaf.com/blog/2011/01/24/using-the-mac-os-x-automounter.html
 
 function brag_and_exit {
 	if [ -n "$1" ] ; then
